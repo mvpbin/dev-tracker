@@ -6,7 +6,7 @@
 
 ## 使用
 
-从 GitHub Releases 下载 `Dev Tracker Setup <版本>.exe`。安装包未签名，Windows 可能提示未知发布者。打开程序后选择项目目录；首次扫描建立基线，之后记录扫描范围内的文件变化和 Git 状态。
+从 GitHub Releases 下载 `Dev.Tracker.Setup.<版本>.exe` 安装版，或下载 `Dev.Tracker.Portable.<版本>.zip` 免安装版。免安装版需解压完整目录，再运行其中的 `Dev Tracker.exe`；项目记录仍保存在下述 Windows 应用数据目录，不随程序文件夹搬迁。程序未签名，Windows 可能提示未知发布者。打开程序后选择项目目录；首次扫描建立基线，之后记录扫描范围内的文件变化和 Git 状态。
 
 记录位于 Windows 应用数据目录的 `dev-tracker` 文件夹，各项目独立保存。关闭后重新选择同一目录可继续读取。备份按钮导出全部 Tracker 记录；恢复按钮全量替换记录并重启。备份**不包含项目源码、依赖和并行副本代码**，但包含本机路径、需求与测试输出，请自行保管。
 
@@ -16,7 +16,7 @@
 
 推荐使用命名管道 stdio 桥。先打开桌面程序，再连接 MCP；桥与桌面共用记录，不创建第二套存储。安装版使用自带的 Electron 运行时，无需另装 Node.js。
 
-下面用 Windows 用户 `YourName`、默认安装目录举例；请将用户名和安装目录替换成实际绝对路径。发现文件实际位于 `%APPDATA%/dev-tracker/mcp-connection/discovery.json`，TOML 中使用展开后的绝对路径。发现文件含本次运行凭据，不要复制、上传或导出其内容。
+下面用 Windows 用户 `YourName`、默认安装目录举例；请将用户名和安装目录替换成实际绝对路径。免安装版将 `command` 和 `args` 中的程序路径改为实际解压目录；发现文件仍位于 `%APPDATA%/dev-tracker/mcp-connection/discovery.json`，TOML 中使用展开后的绝对路径。发现文件含本次运行凭据，不要复制、上传或导出其内容。
 
 ```toml
 [mcp_servers.dev_tracker]
