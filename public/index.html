@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>开发地图 · Dev Tracker</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><span class="brand"><i data-lucide="git-branch"></i> 开发地图 <small id="program-version"></small></span><div id="header-status"><span id="window-context" title="本窗口的项目与会话"></span><div class="session-line"><span id="ai-session">尚无 AI 调用</span><button id="session-copy" title="复制 AI 会话 ID" aria-label="复制 AI 会话 ID" disabled><i data-lucide="copy"></i></button><details id="session-details"><summary title="查看当前项目的 AI 会话">会话 <span id="session-count">0</span></summary><div id="session-list"></div></details></div><span id="mcp-status" role="status" data-state="checking">MCP 检查中</span></div><button id="parallel-window" title="为当前项目建立独立工作目录" aria-label="并行副本" hidden><i data-lucide="git-branch"></i> 并行副本</button><button id="new-window" title="打开独立项目窗口" aria-label="新窗口" hidden><i data-lucide="panels-top-left"></i> 新窗口</button><button id="backup-records" class="record-tool" title="备份全部项目记录（不含源码）" aria-label="备份记录" hidden><i data-lucide="archive"></i></button><button id="restore-records" class="record-tool" title="恢复记录备份" aria-label="恢复记录" hidden><i data-lucide="archive-restore"></i></button><button id="export-diagnostics" class="record-tool" title="导出本次运行诊断" aria-label="导出诊断" hidden><i data-lucide="file-down"></i></button></header>
+<main>
+ <section class="workspace">
+  <div class="toolbar"><div><h1>我的项目</h1><span id="count">0 个功能</span></div><div class="tools" id="map-tools" hidden><button id="out" title="缩小" aria-label="缩小"><i data-lucide="minus"></i></button><output id="scale">100%</output><button id="in" title="放大" aria-label="放大"><i data-lucide="plus"></i></button><button id="fit" title="适应画布" aria-label="适应画布"><i data-lucide="maximize"></i></button></div></div>
+  <div class="view-tabs" role="tablist" aria-label="项目视图"><button id="overview-tab" role="tab" aria-selected="true" aria-controls="overview" data-view="overview"><i data-lucide="layout-dashboard"></i> 项目概览</button><button id="map-tab" role="tab" aria-selected="false" aria-controls="canvas" data-view="map"><i data-lucide="git-branch"></i> 开发地图</button></div>
+  <div class="resume-band" aria-label="会话续接提醒"><i data-lucide="messages-square" aria-hidden="true"></i><div class="resume-message"><strong>换会话前，先复制续接</strong><span>新会话先读取交接记录，再继续开发。</span></div><div class="resume-actions"><button id="resume-copy" title="复制续接内容" aria-label="复制续接内容"><i data-lucide="copy"></i> 复制续接</button><button id="export" title="导出交接记录" aria-label="导出交接记录"><i data-lucide="download"></i></button></div></div>
+  <section id="overview" role="tabpanel" aria-labelledby="overview-tab">
+   <form id="goal-form" class="goal-form"><label for="goal">当前版本目标</label><div><input id="goal" maxlength="2000" autocomplete="off"><button title="保存版本目标" aria-label="保存版本目标"><i data-lucide="save"></i></button></div></form>
+   <div id="overview-summary" aria-live="polite"></div><div id="overview-next"></div><div id="overview-warnings"></div><div id="board" class="board"></div>
+  </section>
+  <section id="task-broadcast" aria-live="polite" hidden><div class="broadcast-head"><strong id="broadcast-title"></strong><button id="broadcast-locate" title="定位当前任务" aria-label="定位当前任务"><i data-lucide="locate-fixed"></i></button></div><p id="broadcast-update"></p><p id="broadcast-next"></p></section>
+  <div id="canvas" role="tabpanel" aria-labelledby="map-tab" hidden><div id="map"><svg id="links" aria-hidden="true"></svg><div id="nodes"></div></div></div>
+  <footer><span id="active">当前没有进行中的任务</span><span>人工追踪 · MCP 未接入</span></footer>
+ </section>
+ <aside>
+  <div class="detail-head"><span>选中功能</span><button id="rename" title="重命名" aria-label="重命名"><i data-lucide="pencil"></i></button></div>
+  <h2 id="title"></h2><span id="status" class="badge"></span>
+   <form id="request"><label for="requirement">修改要求</label><textarea id="requirement" required maxlength="2000" placeholder="例如：导出时只保留筛选后的记录"></textarea><button class="primary" type="submit"><i data-lucide="send"></i> 保存任务</button></form>
+   <section id="acceptance-criteria" hidden><h3>试用通过条件</h3><p></p></section>
+   <div id="acceptance" hidden><h3>验收状态</h3>
+   <div class="actions"><button id="accept" hidden><i data-lucide="check-check"></i> 确认验收</button><button id="reopen" hidden><i data-lucide="rotate-ccw"></i> 重新打开</button></div></div>
+  <h3>项目目录</h3><button id="choose"><i data-lucide="folder-open"></i> 选择项目文件夹</button>
+  <div id="project-path" class="entry">尚未选择项目</div>
+  <details id="developer-details"><summary>开发详情</summary>
+  <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-tab="task">任务</button><button role="tab" aria-selected="false" data-tab="activity">活动</button></div>
+  <div id="task">
+   <div class="actions"><button id="start"><i data-lucide="play"></i> 标记开始</button><button id="add"><i data-lucide="plus"></i> 添加子功能</button></div>
+   <div class="actions"><button id="submit"><i data-lucide="clipboard-check"></i> 提交验收</button></div>
+   <div id="release-scope"><label class="scope-label"><input id="scope" type="checkbox"> 纳入本版交付</label><form id="criteria-form"><label for="criteria">试用通过条件</label><textarea id="criteria" maxlength="2000"></textarea><button type="submit"><i data-lucide="save"></i> 保存通过条件</button></form></div>
+   <h3>任务记录</h3><div id="requirements"></div>
+   <h3>改动与验证</h3><div id="records"></div>
+   <form id="record"><label for="evidence">人工记录</label><textarea id="evidence" required maxlength="2000" placeholder="记录改动文件、操作结果或待验证事项"></textarea><button type="submit"><i data-lucide="file-plus"></i> 添加记录</button></form>
+  </div>
+  <div id="activity" hidden></div>
+  <h3>项目证据</h3>
+  <button id="test-run"><i data-lucide="flask-conical"></i> 运行 Node 测试</button>
+  <div id="evidence-results"></div>
+  </details>
+ </aside>
+</main>
+<div id="notice" role="status" hidden></div>
+<dialog id="dialog"><form method="dialog"><h2 id="dialog-title"></h2><label for="name">名称</label><input id="name" required maxlength="100" autocomplete="off"><div class="dialog-actions"><button value="cancel" formnovalidate>取消</button><button class="primary" value="save">保存</button></div></form></dialog>
+<dialog id="diff-dialog" aria-labelledby="diff-title">
+ <div class="diff-head"><h2 id="diff-title">代码差异</h2><button id="diff-close" title="关闭差异" aria-label="关闭差异"><i data-lucide="x"></i></button></div>
+ <p class="diff-scope">当前 Git 差异（不是历史改动快照）</p>
+ <div id="diff-content" aria-live="polite"></div>
+</dialog>
+<script src="vendor/dagre.js"></script><script src="vendor/lucide.js"></script><script src="app.js"></script>
+</body></html>

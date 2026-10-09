@@ -1,0 +1,84 @@
+{
+  "name": "dev-tracker",
+  "version": "0.11.0",
+  "description": "Local development map for Codex",
+  "author": "mvpbin",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "test:desktop": "node --test tests/desktop.test.js",
+    "test:mcp": "node --test tests/mcp.test.js",
+    "test:connection": "node --test tests/connection-status.test.js",
+    "test:connection-desktop": "node --test tests/connection-status-desktop.test.js",
+    "test:evidence": "node --test tests/evidence.test.js",
+    "test:handoff": "node --test tests/handoff.test.js",
+    "test:branches": "node --test tests/branches.test.js",
+    "test:diff": "node --test tests/git-diff.test.js",
+    "test:diff-desktop": "node --test tests/diff-desktop.test.js",
+    "test:readiness": "node --test tests/overview.test.js tests/projects.test.js",
+    "test:readiness-desktop": "node --test tests/readiness-desktop.test.js",
+    "test:journal": "node --test tests/journal.test.js",
+    "test:journal-desktop": "node --test tests/journal-desktop.test.js",
+    "test:sessions": "node --test tests/sessions.test.js tests/session-mcp.test.js tests/worktrees.test.js",
+    "test:sessions-desktop": "node --test tests/multi-window-desktop.test.js",
+    "test:checkup": "node --test tests/audit-projects.test.js tests/audit-evidence.test.js tests/compact-handoff.test.js",
+    "test:checkup-desktop": "node --test tests/audit-desktop.test.js",
+    "test:core": "node --test tests/audit-evidence.test.js tests/audit-projects.test.js tests/backup.test.js tests/compact-handoff.test.js tests/connection-status.test.js tests/diagnostics.test.js tests/evidence.test.js tests/git-diff.test.js tests/handoff.test.js tests/journal.test.js tests/mcp.test.js tests/overview.test.js tests/projects.test.js tests/release-connection.test.js tests/session-mcp.test.js tests/sessions.test.js tests/worktrees.test.js",
+    "test:pipes": "node --test --test-concurrency=1 tests/pipe-server.test.js tests/pipe-bridge.test.js tests/pipe-integration.test.js",
+    "test:desktop:all": "node --test --test-concurrency=1 tests/audit-desktop.test.js tests/branches.test.js tests/connection-status-desktop.test.js tests/desktop.test.js tests/diff-desktop.test.js tests/journal-desktop.test.js tests/logging-desktop.test.js tests/multi-window-desktop.test.js tests/readiness-desktop.test.js tests/records-desktop.test.js tests/pipe-desktop.test.js",
+    "build:win": "electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "local.devtracker.desktop",
+    "productName": "Dev Tracker",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "server.js",
+      "project.js",
+      "worktrees.js",
+      "mcp.js",
+      "mcp-stdio.mjs",
+      "pipe-server.js",
+      "pipe-config.js",
+      "pipe-fetch.js",
+      "evidence.js",
+      "handoff.js",
+      "compact-handoff.js",
+      "git-diff.js",
+      "overview.js",
+      "journal.js",
+      "backup.js",
+      "diagnostics.js",
+      "public/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.5",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "express": "^5.1.0",
+    "lucide": "^0.468.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "playwright": "^1.64.0"
+  }
+}
