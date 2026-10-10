@@ -43,6 +43,10 @@ $('session-copy').onclick = () => { const session = connection?.sessions.find(ro
 $('session-list').onclick = event => { const button = event.target.closest('[data-session-copy]'); if (button) copySession(button.dataset.sessionCopy); };
 document.addEventListener('keydown', event => { if (event.key === 'Escape') $('session-details').open = false; });
 function receiveState(value) {
+  const root = value.context?.projectRoot;
+  $('current-project').textContent = root ? `当前项目：${root.split(/[\\/]/).filter(Boolean).at(-1) || root}` : '尚未选择项目';
+  $('current-project-path').textContent = root || '选择项目目录后开始；曾打开的项目会恢复已有记录。';
+  $('current-project-path').title = root || '';
   if (state && value.context?.sessionId !== state.context?.sessionId) {
     connection = undefined; $('session-details').open = false; renderConnection();
     selected = value.nodes.find(node => !node.parent).id;
@@ -68,14 +72,20 @@ async function action(action, text, id = selected) {
   await refresh(); notify('已保存到本地工作区'); return true;
 }
 function showView(next) {
-  view = next; $('overview').hidden = next !== 'overview'; $('canvas').hidden = next !== 'map'; $('map-tools').hidden = next !== 'map';
+  view = next; $('overview').hidden = next !== 'overview'; $('canvas').hidden = next !== 'map';
   $('task-broadcast').hidden = next !== 'map';
   document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-selected', button.dataset.view === next));
   if (next === 'map') requestAnimationFrame(() => { if (autoFit) fitMap(); else drawView(); });
 }
+function showDetails(open) {
+  $('details-panel').hidden = !open;
+  $('details-toggle').setAttribute('aria-expanded', String(open));
+}
+$('details-toggle').onclick = () => showDetails($('details-panel').hidden);
+$('details-close').onclick = () => { showDetails(false); $('details-toggle').focus(); };
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => showView(button.dataset.view));
 function selectNode(id) {
-  selected = id; $('requirement').value = ''; $('evidence').value = ''; render(); showView('map'); refreshEvidence().catch(e => notify(e.message));
+  selected = id; $('requirement').value = ''; $('evidence').value = ''; render(); showView('map'); showDetails(true); refreshEvidence().catch(e => notify(e.message));
 }
 function renderOverview() {
   if (!overview) return;
@@ -175,7 +185,7 @@ function setZoom(value, x = $('canvas').clientWidth / 2, y = $('canvas').clientH
 }
 function fitMap() {
   if (!mapSize || !$('canvas').clientWidth || !$('canvas').clientHeight) return;
-  zoom = Math.min(1, Math.max(.1, Math.min(($('canvas').clientWidth - 32) / mapSize.width, ($('canvas').clientHeight - 32) / mapSize.height)));
+  zoom = Math.min(1, Math.max(.1, Math.min(($('canvas').clientWidth - 32) / mapSize.width, ($('canvas').clientHeight - 128) / mapSize.height)));
   pan = { x: ($('canvas').clientWidth - mapSize.width * zoom) / 2, y: ($('canvas').clientHeight - mapSize.height * zoom) / 2 };
   autoFit = true; drawView();
 }
@@ -186,7 +196,7 @@ $('canvas').addEventListener('wheel', event => {
   setZoom(zoom * Math.exp(-delta * .0015), event.clientX - box.left, event.clientY - box.top);
 }, { passive: false });
 $('canvas').addEventListener('pointerdown', event => {
-  if (event.button !== 0 || event.target.closest('.node')) return;
+  if (event.button !== 0 || event.target.closest('.node, #map-tools')) return;
   drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
   $('canvas').setPointerCapture(event.pointerId); $('canvas').classList.add('dragging');
 });
@@ -297,6 +307,8 @@ async function refreshEvidence() {
   const r = await fetch('api/evidence'); if (!r.ok) throw new Error('证据读取失败'); const e = await r.json();
   if (epoch !== projectEpoch || request !== evidenceRequest || sessionId !== state?.context?.sessionId) return;
   $('choose').disabled = !window.desktop || e.running;
+  $('switch-project').hidden = !window.desktop;
+  $('switch-project').disabled = !window.desktop || e.running || switchingProject;
   $('project-path').textContent = e.root || '尚未选择项目'; $('test-run').disabled = !e.root || e.running;
   const status = e.git?.available ? `Git HEAD：${e.git.head || '尚无提交'}\n${e.git.status.replaceAll('\0', '\n') || '工作区干净'}` : `Git 不可用：${e.git?.error || '未连接'}`;
   const changes = e.changes.map(c => ({ ...c, kind: 'file' })).concat((e.gitChanges || []).map(c => ({ ...c, kind: 'git' })));
@@ -361,10 +373,13 @@ async function openDiff(button) {
     if (request === diffRequest && $('diff-dialog').open) content.textContent = `差异读取失败：${e.message}`;
   } finally { button.disabled = false; }
 }
-$('choose').onclick = async () => {
-  projectEpoch++; switchingProject = true; $('choose').disabled = true;
-  try { await window.desktop.chooseProject(); } catch (e) { notify(e.message); }
-  finally { switchingProject = false; $('choose').disabled = false; }
+$('choose').onclick = $('switch-project').onclick = async () => {
+  if (switchingProject) return;
+  projectEpoch++; switchingProject = true; $('choose').disabled = $('switch-project').disabled = true;
+  $('project-switch-status').textContent = '正在选择或打开项目…';
+  try { await window.desktop.chooseProject(); $('project-switch-status').textContent = ''; }
+  catch (e) { $('project-switch-status').textContent = `打开失败：${e.message}`; notify(e.message); }
+  finally { switchingProject = false; $('choose').disabled = $('switch-project').disabled = false; }
   try { await refresh(); await refreshEvidence(); } catch (e) { notify(e.message); }
 };
 $('test-run').onclick = async () => { $('test-run').disabled = true; try { if (switchingProject) throw new Error('正在切换项目，请稍后操作'); const epoch = projectEpoch, sessionId = state.context?.sessionId; const r = await fetch('api/tests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selected, sessionId }) }); if (epoch !== projectEpoch || sessionId !== state.context?.sessionId) return; if (!r.ok) throw new Error((await r.json()).error); await refreshEvidence(); } catch (e) { notify(e.message); } };

@@ -7,12 +7,43 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { createEvidence } from '../evidence.js';
 const exec = promisify(execFile);
+
+test('Git source filtering preserves initialized submodule sources and their untracked work', async () => {
+  const base = await mkdtemp(path.join(tmpdir(), 'dev-tracker-submodule-scan-'));
+  try {
+    const root = path.join(base, 'project'), child = path.join(root, 'module');
+    await mkdir(child, { recursive: true });
+    await exec('git', ['init', root]); await exec('git', ['init', child]);
+    await writeFile(path.join(child, 'tracked.test.cjs'), "require('node:test')('tracked source', () => {});");
+    await exec('git', ['-C', child, 'add', '.']);
+    await exec('git', ['-C', child, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'fixture']);
+    const head = (await exec('git', ['-C', child, 'rev-parse', 'HEAD'])).stdout.trim();
+    await exec('git', ['-C', root, 'update-index', '--add', '--cacheinfo', `160000,${head},module`]);
+    await writeFile(path.join(child, 'new.test.cjs'), "require('node:test')('untracked source', () => {});");
+    const tracker = await createEvidence(path.join(base, 'store'));
+    await tracker.select(root);
+    const result = await tracker.run('root');
+    assert.deepEqual(result.testFiles, ['module/new.test.cjs', 'module/tracked.test.cjs'], 'source filtering cannot silently omit a nested repository');
+    assert.equal(result.passed, true);
+    await writeFile(path.join(child, 'new.test.cjs'), "throw new Error('source changed');");
+    await tracker.scan();
+    assert.equal(tracker.get().tests[0].current, false);
+  } finally {
+    assert.equal(path.dirname(base), path.resolve(tmpdir()));
+    assert.ok(path.basename(base).startsWith('dev-tracker-submodule-scan-'));
+    await rm(base, { recursive: true, force: true });
+  }
+});
 test('observed changes invalidate passing tests and remain unattributed; Git is measured', async () => {
   const base = await mkdtemp(path.join(tmpdir(), 'dev-tracker-evidence-'));
   try {
     const root = path.join(base, 'project'), storage = path.join(base, 'store'); await mkdir(root);
     await writeFile(path.join(root, 'sample.test.cjs'), "require('node:test')('real test', () => require('node:assert/strict').equal(1, 1));");
     await exec('git', ['init', root]);
+    await writeFile(path.join(root, '.gitignore'), '.tmp/\nexports/\n');
+    await mkdir(path.join(root, '.tmp')); await mkdir(path.join(root, 'exports'));
+    await writeFile(path.join(root, '.tmp', 'generated.test.cjs'), "throw new Error('ignored output must not run');");
+    await writeFile(path.join(root, 'exports', 'generated.test.cjs'), "throw new Error('ignored output must not run');");
     const tracker = await createEvidence(storage); await tracker.select(root);
     assert.equal(tracker.get().git.available, true);
     assert.match(tracker.get().git.status, /sample.test.cjs/);

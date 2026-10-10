@@ -25,6 +25,7 @@ test('desktop exe MCP shares the map and recovers its private discovery after an
   const launch = async () => {
     desktop = await _electron.launch({ executablePath, args, env, timeout: 15000 });
     const page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.waitForFunction(() => document.getElementById('window-context').textContent.length > 0);
     return page;
   };
@@ -42,7 +43,7 @@ test('desktop exe MCP shares the map and recovers its private discovery after an
   try {
     let page = await launch();
     await desktop.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, project);
-    await page.locator('#choose').click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
     const first = JSON.parse(await readFile(configPath, 'utf8'));
     await bridge();

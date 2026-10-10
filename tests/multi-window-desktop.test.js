@@ -20,16 +20,18 @@ test('independent desktop windows keep projects and simultaneous AI tasks separa
     await Promise.all(roots.map(root => mkdir(root)));
     desktop = await _electron.launch({ timeout: 15000, executablePath: process.env.DEV_TRACKER_EXE || electron, args: process.env.DEV_TRACKER_EXE ? [] : ['.'], env: { ...process.env, DEV_TRACKER_TEST_DATA: storage } });
     const first = await desktop.firstWindow();
+    await first.locator('#details-toggle').click();
     await first.waitForFunction(() => document.getElementById('window-context').textContent.length > 0);
     const select = async (page, root) => {
       await desktop.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, root);
-      await page.locator('#choose').click();
+      await page.locator('#switch-project').click();
       await page.locator('#project-path').getByText(root, { exact: true }).waitFor();
     };
     const nextWindow = async page => {
       const pending = desktop.waitForEvent('window');
       await page.locator('#new-window').click();
       const next = await pending;
+      await next.locator('#details-toggle').click();
       await next.waitForFunction(() => document.getElementById('window-context').textContent.length > 0);
       return next;
     };

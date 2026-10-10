@@ -6,25 +6,36 @@ import path from 'node:path';
 import { _electron } from 'playwright';
 import electron from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 test('desktop release readiness keeps project A and B maps, evidence, and independent MCP handoff consistent', { timeout: 120000 }, async () => {
   const storage = await mkdtemp(path.join(tmpdir(), 'dev-tracker-readiness-desktop-'));
   const projectA = path.join(storage, 'project-a'), projectB = path.join(storage, 'project-b');
-  let desktop, page, client;
+  let desktop, page, client, sessionId;
   const launch = () => _electron.launch({ timeout: 15000, executablePath: process.env.DEV_TRACKER_EXE || electron,
     args: process.env.DEV_TRACKER_EXE ? [] : ['.'], env: { ...process.env, DEV_TRACKER_TEST_DATA: storage } });
   const call = async (name, arguments_ = {}) => {
-    const result = await client.callTool({ name, arguments: arguments_ });
+    const result = await client.callTool({ name, arguments: name === 'bind_session' ? arguments_ : { ...arguments_, sessionId } }, undefined, { timeout: 10000 });
     assert.notEqual(result.isError, true, `${name}: ${JSON.stringify(result.content)}`);
     return JSON.parse(result.content[0].text);
+  };
+  const connect = async name => {
+    const config = await page.evaluate(() => window.desktop.mcpConfig());
+    const command = JSON.parse(config.match(/^command = (.*)$/m)[1]);
+    const args = JSON.parse(config.match(/^args = (.*)$/m)[1]);
+    client = new Client({ name, version: '1' });
+    await client.connect(new StdioClientTransport({ command, args, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' }));
+  };
+  const bindProject = async projectRoot => {
+    sessionId = (await call('bind_session', { projectRoot, label: 'Readiness acceptance' })).sessionId;
   };
   const selectProject = async directory => {
     await desktop.evaluate(async ({ dialog }, selected) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
     }, directory);
-    await page.getByRole('button', { name: '选择项目文件夹', exact: true }).click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(directory, { exact: true }).waitFor();
+    await bindProject(directory);
   };
   const mapTitles = async () => {
     await page.locator('#map-tab').click();
@@ -41,10 +52,10 @@ test('desktop release readiness keeps project A and B maps, evidence, and indepe
     await writeFile(path.join(projectA, 'source.js'), 'export const value = 1;\n');
     await writeFile(path.join(projectB, 'b.txt'), 'project B evidence\n');
     desktop = await launch(); page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.locator('#overview-summary .progress-metric').first().waitFor();
-    client = new Client({ name: 'readiness-desktop', version: '1' });
-    await client.connect(new StreamableHTTPClientTransport(new URL('mcp', page.url())));
+    await connect('readiness-desktop');
 
     await selectProject(projectA);
     const rootA = (await call('get_map')).find(node => node.parent === null);
@@ -92,6 +103,7 @@ test('desktop release readiness keeps project A and B maps, evidence, and indepe
     assert.ok(stale.items.find(item => item.id === firstId).acceptanceWarning);
     await page.locator('#board .lane[data-lane="verify"] .board-item').filter({ hasText: '可验收功能' }).waitFor();
     await page.reload();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.locator('#board .lane[data-lane="verify"] .board-item').filter({ hasText: '可验收功能' }).waitFor();
     await page.locator('#map-tab').click();
@@ -113,10 +125,13 @@ test('desktop release readiness keeps project A and B maps, evidence, and indepe
     assert.equal(evidenceA.tests.length, 1);
     await client.close(); client = undefined; await desktop.close(); desktop = undefined;
 
-    desktop = await launch(); page = await desktop.firstWindow(); await page.locator('#board .board-item').first().waitFor();
+    desktop = await launch(); page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click(); await page.locator('#board .board-item').first().waitFor();
     await page.locator('#developer-details > summary').click();
-    client = new Client({ name: 'readiness-independent-client', version: '1' });
-    await client.connect(new StreamableHTTPClientTransport(new URL('mcp', page.url())));
+    await connect('readiness-independent-client');
+    const reopenedRoot = await page.evaluate(async () => (await (await fetch('api/state')).json()).context.projectRoot);
+    assert.equal(reopenedRoot, projectA, 'reopened window preserves project A before the independent MCP client binds');
+    await bindProject(reopenedRoot);
     const handoff = await call('get_handoff'); const restored = await call('get_overview');
     assert.equal(handoff.snapshot.project.root, projectA);
     assert.equal(restored.goal, stale.goal); assert.equal(restored.total, 2);

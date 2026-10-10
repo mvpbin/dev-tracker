@@ -8,6 +8,8 @@ Dev Tracker 是配合 Codex 使用的本地开发管理工具。你继续用大�
 
 [下载 Windows 版](https://github.com/mvpbin/dev-tracker/releases/tag/v0.12.0) · [本版更新](RELEASE_NOTES_0.12.0.md) · [Windows 验收清单](WINDOWS_ACCEPTANCE.md)
 
+[试用 0.12.1-rc.3 候选版](https://github.com/mvpbin/dev-tracker/releases/tag/v0.12.1-rc.3)：中央工作区默认全宽，点“任务与详情”或功能节点展开右侧面板；顶部可直接打开 / 切换项目。本版也修复大型项目构建缓存造成的扫描长等待。候选版尚未重验独立 Windows 安装，正式稳定版仍为 0.12.0。
+
 ## 为什么需要它
 
 用 AI 做工具，能提出想法并不意味着能判断开发结果。尤其在功能增多、不断修改需求、聊天变长之后，你可能遇到这些问题：

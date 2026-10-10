@@ -13,7 +13,7 @@ export async function createProject(storage, activeRoot, excludedStorage) {
   catch (error) { if (error.code !== 'ENOENT') throw error; state = { nodes: [{ id: 'root', parent: null, title: '我的项目', status: 'idle', tasks: [], notes: [] }], events: [] }; }
   const tracker = await createEvidence(storage, { excludedStorage });
   if (activeRoot && !tracker.get().root) await tracker.select(activeRoot);
-  try { await tracker.scan(); } catch { /* keep persisted scan error visible */ }
+  else try { await tracker.scan(); } catch { /* keep persisted scan error visible */ }
   let queue = Promise.resolve(), testing = false;
   const locked = work => { const result = queue.then(work); queue = result.catch(() => {}); return result; };
   const canonicalKey = value => process.platform === 'win32' ? value.toLowerCase() : value;

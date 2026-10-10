@@ -3,12 +3,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { createReadStream } from 'node:fs';
 import { readGitDiff } from './git-diff.js';
 
 const exec = promisify(execFile);
 const excluded = new Set(['.git', 'node_modules', 'dist', '.data', '.demo', 'test-results']);
 const hash = text => createHash('sha256').update(text).digest('hex');
-export async function createEvidence(storage, { excludedStorage = storage } = {}) {
+export async function createEvidence(storage, { excludedStorage = storage, scanTimeoutMs = 30000 } = {}) {
   excludedStorage = path.resolve(excludedStorage);
   const file = path.join(storage, 'evidence.json');
   let state = { root: null, files: {}, fingerprint: null, changes: [], tests: [], git: null, error: null };
@@ -18,26 +19,68 @@ export async function createEvidence(storage, { excludedStorage = storage } = {}
   const locked = work => { const result = queue.then(work); queue = result.catch(() => {}); return result; };
   async function save() { await mkdir(storage, { recursive: true }); await writeFile(file + '.tmp', JSON.stringify(state, null, 2)); await rename(file + '.tmp', file); }
   async function snapshot(root) {
+    const controller = new AbortController(), { signal } = controller;
+    const timeout = setTimeout(() => controller.abort(new Error('项目扫描超过时限，请选择较小的开发目录；当前项目保持不变')), scanTimeoutMs);
+    let onAbort;
+    const aborted = new Promise((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener('abort', onAbort, { once: true }); });
+    try { return await Promise.race([capture(root, signal), aborted]); }
+    finally { clearTimeout(timeout); signal.removeEventListener('abort', onAbort); }
+  }
+  async function capture(root, signal) {
     const files = {};
+    let included, directories;
+    const key = value => process.platform === 'win32' ? value.toLowerCase() : value;
+    async function includeGitFiles(directory, prefix = '') {
+      const result = await exec('git', ['-C', directory, 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], { windowsHide: true, timeout: 10000, maxBuffer: 16 * 1024 * 1024, signal });
+      for (const file of result.stdout.split('\0').filter(Boolean)) {
+        const name = key(prefix + file); included.add(name);
+        let parent = path.posix.dirname(name);
+        while (parent !== '.') { directories.add(parent); parent = path.posix.dirname(parent); }
+      }
+    }
+    try {
+      included = new Set(); directories = new Set();
+      await includeGitFiles(root);
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 128) throw error;
+      included = undefined;
+    }
     async function walk(directory) {
+      signal.throwIfAborted();
       for (const entry of await readdir(directory, { withFileTypes: true })) {
+        signal.throwIfAborted();
         if (excluded.has(entry.name)) continue;
+        if (!included && entry.name === 'target' && entry.isDirectory()) {
+          try { await readFile(path.join(directory, 'Cargo.toml'), { signal }); continue; }
+          catch (error) { if (error.code !== 'ENOENT') throw error; }
+        }
         const absolute = path.join(directory, entry.name);
         if (path.resolve(absolute) === excludedStorage || entry.isSymbolicLink()) continue;
+        const relative = path.relative(root, absolute).replaceAll('\\', '/');
+        if (included && entry.isDirectory() && included.has(key(relative))) {
+          await includeGitFiles(absolute, relative + '/');
+          directories.add(key(relative));
+        }
+        if (included && !(entry.isDirectory() ? directories : included).has(key(relative))) continue;
         if (entry.isDirectory()) await walk(absolute);
-        else if (entry.isFile()) files[path.relative(root, absolute).replaceAll('\\', '/')] = hash(await readFile(absolute));
+        else if (entry.isFile()) {
+          const digest = createHash('sha256');
+          for await (const chunk of createReadStream(absolute, { signal })) digest.update(chunk);
+          files[relative] = digest.digest('hex');
+        }
       }
     }
     await walk(root);
     let git = { available: false, head: null, status: '' };
     try {
-      const status = await exec('git', ['-C', root, 'status', '--porcelain=v1', '-z', '--', '.'], { windowsHide: true, timeout: 10000 });
+      const status = await exec('git', ['-C', root, 'status', '--porcelain=v1', '-z', '--', '.'], { windowsHide: true, timeout: 10000, signal });
       git.available = true; git.status = status.stdout;
-      try { git.head = (await exec('git', ['-C', root, 'rev-parse', 'HEAD'], { windowsHide: true, timeout: 10000 })).stdout.trim(); }
+      try { git.head = (await exec('git', ['-C', root, 'rev-parse', 'HEAD'], { windowsHide: true, timeout: 10000, signal })).stdout.trim(); }
       catch { git.head = null; }
     } catch (error) { git.error = error.stderr?.trim() || error.message; }
     // Old automatically discovered tests may include files outside this scan scope.
-    return { files, git, fingerprint: hash('scanned-node-tests-v2\0' + JSON.stringify(Object.entries(files).sort()) + JSON.stringify(git)) };
+    signal.throwIfAborted();
+    return { files, git, fingerprint: hash('scanned-node-tests-v3\0' + JSON.stringify(Object.entries(files).sort()) + JSON.stringify(git)) };
   }
   async function scan() {
     if (!state.root) return;

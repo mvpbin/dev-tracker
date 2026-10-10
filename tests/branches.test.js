@@ -21,12 +21,13 @@ test('AI branch highlights follow reported work, not selection or manual status'
       env: { ...process.env, DEV_TRACKER_TEST_DATA: storage }
     });
     const page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.getByRole('tab', { name: '开发地图', exact: true }).click();
     await page.locator('.node').waitFor();
     await page.waitForFunction(() => !document.getElementById('canvas').hidden);
     await desktop.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, project);
-    await page.locator('#choose').click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
     const config = await page.evaluate(() => window.desktop.mcpConfig());
     const command = JSON.parse(config.match(/^command = (.*)$/m)[1]);
@@ -73,6 +74,7 @@ test('AI branch highlights follow reported work, not selection or manual status'
     await mkdir('test-results', { recursive: true });
     await page.getByRole('button', { name: '适应画布', exact: true }).click();
     await page.screenshot({ path: 'test-results/branches-desktop.png' });
+    await page.locator('#details-close').click();
     await page.setViewportSize({ width: 375, height: 812 });
     await page.getByRole('button', { name: '适应画布', exact: true }).click();
     await edges([['root', parent], [parent, leaf]]);

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { _electron } from 'playwright';
 import electron from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 test('desktop records survive closing and reopening without changing prototype data', async () => {
   const storage = await mkdtemp(path.join(tmpdir(), 'dev-tracker-desktop-'));
@@ -17,6 +17,7 @@ test('desktop records survive closing and reopening without changing prototype d
     await writeFile(path.join(project, 'real.test.cjs'), "require('node:test')('real test', () => require('node:assert/strict').equal(1, 1));");
     desktop = await launch();
     let page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.getByRole('tab', { name: '开发地图', exact: true }).click();
     await page.locator('.node').waitFor();
@@ -66,28 +67,40 @@ test('desktop records survive closing and reopening without changing prototype d
     await desktop.evaluate(async ({ dialog }, root) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] });
     }, project);
-    await page.getByRole('button', { name: '选择项目文件夹', exact: true }).click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
     await page.locator('.node').filter({ hasText: '桌面验收节点' }).click();
     await page.locator('#requirements').getByText('重启后保留这条任务').waitFor();
     assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
     const client = new Client({ name: 'desktop-test', version: '1' });
     try {
-      await client.connect(new StreamableHTTPClientTransport(new URL('mcp', page.url())));
-      const map = JSON.parse((await client.callTool({ name: 'get_map', arguments: {} })).content[0].text);
+      const config = await page.evaluate(() => window.desktop.mcpConfig());
+      const command = JSON.parse(config.match(/^command = (.*)$/m)[1]);
+      const args = JSON.parse(config.match(/^args = (.*)$/m)[1]);
+      await client.connect(new StdioClientTransport({ command, args, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' }));
+      const bound = await client.callTool({ name: 'bind_session', arguments: { projectRoot: project, label: 'Desktop acceptance' } }, undefined, { timeout: 10000 });
+      assert.notEqual(bound.isError, true, JSON.stringify(bound.content));
+      const sessionId = JSON.parse(bound.content[0].text).sessionId;
+      const call = async (name, args = {}) => {
+        const result = await client.callTool({ name, arguments: { ...args, sessionId } }, undefined, { timeout: 10000 });
+        assert.notEqual(result.isError, true, JSON.stringify(result.content));
+        return result;
+      };
+      const map = JSON.parse((await call('get_map')).content[0].text);
       await page.getByRole('button', { name: '缩小', exact: true }).click();
       const preserved = await view();
-      await client.callTool({ name: 'update_node', arguments: { id: map[1].id, action: 'start' } });
-      await client.callTool({ name: 'update_node', arguments: { id: map[1].id, action: 'record', text: 'AI 说明：等待用户试用后确认' } });
+      await call('update_node', { id: map[1].id, action: 'start' });
+      await call('update_node', { id: map[1].id, action: 'record', text: 'AI 说明：等待用户试用后确认' });
       await page.locator('#status').getByText('处理中 · AI 自报', { exact: true }).waitFor();
       assert.deepEqual(await view(), preserved, 'MCP refresh preserves user zoom and pan');
-      await client.callTool({ name: 'update_node', arguments: { id: map[1].id, action: 'submit' } });
+      await call('update_node', { id: map[1].id, action: 'submit' });
       await page.locator('#status').getByText('开发完成 · 待验收 · AI 自报', { exact: true }).waitFor();
       await page.getByRole('button', { name: '确认验收', exact: true }).click();
       await page.locator('#status').getByText('用户已确认', { exact: true }).waitFor();
       await page.screenshot({ path: 'test-results/accepted-desktop.png' });
       await page.locator('.node').first().click();
       assert.deepEqual(await view(), preserved, 'selecting a node preserves the view');
+      await page.locator('#details-close').click();
       await page.setViewportSize({ width: 375, height: 812 });
       await page.getByRole('button', { name: '适应画布', exact: true }).click();
       await centered();
@@ -100,6 +113,7 @@ test('desktop records survive closing and reopening without changing prototype d
     await desktop.close(); desktop = undefined;
     desktop = await launch();
     page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.getByRole('tab', { name: '开发地图', exact: true }).click();
     await page.waitForFunction(() => !document.getElementById('canvas').hidden);
@@ -120,6 +134,7 @@ test('desktop records survive closing and reopening without changing prototype d
     await page.getByRole('button', { name: '关联到当前功能', exact: true }).click();
     await page.locator('#linked-changes').getByText('新增：new.js').waitFor();
     await page.reload();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.getByRole('tab', { name: '开发地图', exact: true }).click();
     await page.waitForFunction(() => !document.getElementById('canvas').hidden);

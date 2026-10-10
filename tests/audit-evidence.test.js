@@ -21,6 +21,42 @@ async function fixture(work) {
   }
 }
 
+test('Rust build output is excluded while Rust sources still invalidate verification', () => fixture(async ({ root, tracker }) => {
+  await mkdir(path.join(root, 'src-tauri/target/debug'), { recursive: true });
+  await mkdir(path.join(root, 'src-tauri/src'));
+  await writeFile(path.join(root, 'src-tauri/Cargo.toml'), '[package]');
+  await writeFile(path.join(root, 'src-tauri/src/main.rs'), 'fn main() {}');
+  await writeFile(path.join(root, 'src-tauri/target/debug/build.test.cjs'), fail);
+  await writeFile(path.join(root, 'intent.test.cjs'), pass);
+  await tracker.select(root);
+  const result = await tracker.run('a');
+  assert.equal(result.passed, true, 'compiler output must not execute as project tests');
+  await writeFile(path.join(root, 'src-tauri/target/debug/artifact'), 'rebuilt');
+  await tracker.scan();
+  assert.equal(tracker.get().tests[0].current, true, 'rebuilding excluded artifacts does not change source verification');
+  await writeFile(path.join(root, 'src-tauri/src/main.rs'), 'fn main() { println!("changed"); }');
+  await tracker.scan();
+  assert.equal(tracker.get().tests[0].current, false, 'changing actual Rust source invalidates the old verification');
+}));
+
+test('a scan deadline preserves the previous snapshot and invalidates proof until a successful rescan', () => fixture(async ({ base, root, tracker }) => {
+  await writeFile(path.join(root, 'intent.test.cjs'), pass);
+  await tracker.select(root); await tracker.run('a');
+  const before = tracker.get(), other = path.join(base, 'other');
+  await mkdir(other);
+  for (let i = 0; i < 100; i++) await writeFile(path.join(other, `${i}.js`), 'new source');
+  const bounded = await createEvidence(path.join(base, 'store'), { scanTimeoutMs: 1 });
+  await assert.rejects(bounded.select(other), /时限/);
+  assert.equal(bounded.get().root, root, 'an aborted switch cannot commit later to another project');
+  assert.equal(bounded.get().fingerprint, before.fingerprint);
+  await assert.rejects(bounded.scan(), /时限/);
+  assert.equal(bounded.get().tests[0].current, false, 'failed scans must not leave old evidence marked current');
+  const recovered = await createEvidence(path.join(base, 'store'));
+  await recovered.scan();
+  assert.equal(recovered.get().error, null);
+  assert.equal(recovered.get().tests[0].current, true, 'a complete rescan can restore verification of unchanged source');
+}));
+
 test('excluded output tests cannot be used as current-version verification when their contents are not scanned', () => fixture(async ({ root, tracker }) => {
   await mkdir(path.join(root, 'dist'));
   await writeFile(path.join(root, 'dist', 'smoke.test.cjs'), pass);
@@ -32,19 +68,19 @@ test('excluded output tests cannot be used as current-version verification when 
   assert.match(result.stderr, /没有.*测试文件/);
 }));
 
-test('upgrading scan scope invalidates v1 passes without deleting their history', () => fixture(async ({ base, root, tracker }) => {
+test('upgrading scan scope invalidates v2 passes without deleting their history', () => fixture(async ({ base, root, tracker }) => {
   await writeFile(path.join(root, 'sample.test.cjs'), pass);
   await tracker.select(root);
   const file = path.join(base, 'store', 'evidence.json');
   const stored = JSON.parse(await readFile(file, 'utf8'));
-  const legacy = createHash('sha256').update('scanned-node-tests-v1\0' + JSON.stringify(Object.entries(stored.files).sort()) + JSON.stringify(stored.git)).digest('hex');
+  const legacy = createHash('sha256').update('scanned-node-tests-v2\0' + JSON.stringify(Object.entries(stored.files).sort()) + JSON.stringify(stored.git)).digest('hex');
   stored.fingerprint = legacy;
   stored.tests = [{ node: 'a', fingerprint: legacy, after: legacy, passed: true, unchanged: true }];
   await writeFile(file, JSON.stringify(stored));
   const reopened = await createEvidence(path.join(base, 'store'));
   await reopened.scan();
   assert.equal(reopened.get().tests.length, 1, 'executed history remains available after migration');
-  assert.equal(reopened.get().tests[0].current, false, 'v1 scope cannot verify the new exclusion policy');
+  assert.equal(reopened.get().tests[0].current, false, 'v2 scope cannot verify the new exclusion policy');
 }));
 
 test('explicit scanned JS discovery supports Node filename conventions and invalidates evidence when an executed test changes', () => fixture(async ({ root, tracker }) => {

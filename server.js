@@ -102,7 +102,8 @@ export async function startServer({ storage = path.join(root, '.data'), port = 4
       await candidate.select(projectRoot);
       await migrateLegacy(projectStorage(projectRoot));
     }
-    await loadProject(projectRoot);
+    const first = await loadProject(projectRoot);
+    if (first.evidence.get().error) throw new Error(first.evidence.get().error);
     await saveJSON(selectionFile, { root: projectRoot });
     selected = projectRoot;
   }
@@ -175,9 +176,11 @@ export async function startServer({ storage = path.join(root, '.data'), port = 4
       if (!current) throw new Error('窗口不存在');
       const resolved = await validateRoot(value);
       if (current.projectRoot && key(resolved) === key(current.projectRoot)) { await (await loadProject(resolved)).evidence.scan(); return; }
+      const loaded = projects.has(key(resolved));
       await ensureFirstProject(resolved);
       const project = await loadProject(resolved);
-      await project.evidence.scan();
+      if (loaded) await project.evidence.scan();
+      if (project.evidence.get().error) throw new Error(project.evidence.get().error);
       const session = await newSession(resolved, current.label);
       windows.set(windowId, session.sessionId);
       selected = resolved;
@@ -288,7 +291,13 @@ export async function startServer({ storage = path.join(root, '.data'), port = 4
         return server;
       };
       server.shutdown = () => new Promise((done, fail) => server.close(error => error ? fail(error) : done()));
-      const timer = setInterval(() => { if (!maintenance && !closing) operation(async () => { for (const p of projects.values()) await (await p).evidence.scan(); }).catch(reportError); }, 5000);
+      let scanning = false;
+      const timer = setInterval(() => {
+        if (maintenance || closing || scanning) return;
+        scanning = true;
+        operation(async () => { for (const p of projects.values()) await (await p).evidence.scan(); })
+          .catch(reportError).finally(() => { scanning = false; });
+      }, 5000);
       server.once('close', () => { clearInterval(timer); diagnostics?.record('close', { stage: 'server' }); }); resolve(server);
     });
     server.once('error', error => { diagnostics?.record('error', { stage: 'server', error }); reject(error); });

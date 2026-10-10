@@ -6,26 +6,36 @@ import path from 'node:path';
 import { _electron } from 'playwright';
 import electron from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 test('map broadcast and persistent AI journal support a fresh client without overwhelming the user', { timeout: 120000 }, async () => {
   const storage = await mkdtemp(path.join(tmpdir(), 'dev-tracker-journal-desktop-'));
   const projectA = path.join(storage, 'project-a'), projectB = path.join(storage, 'project-b');
-  let desktop, page, client, originalError;
+  let desktop, page, client, originalError, sessionId, expectedRoot = null;
   const call = async (name, args = {}) => {
-    const result = await client.callTool({ name, arguments: args });
+    const result = await client.callTool({ name, arguments: name === 'bind_session' ? args : { ...args, sessionId } }, undefined, { timeout: 10000 });
     assert.notEqual(result.isError, true, `${name}: ${JSON.stringify(result.content)}`);
     return JSON.parse(result.content[0].text);
+  };
+  const bindProject = async projectRoot => {
+    sessionId = (await call('bind_session', { projectRoot, label: 'Journal acceptance' })).sessionId;
   };
   const launch = async () => {
     desktop = await _electron.launch({ timeout: 15000, executablePath: process.env.DEV_TRACKER_EXE || electron,
       args: process.env.DEV_TRACKER_EXE ? [] : ['.'], env: { ...process.env, DEV_TRACKER_TEST_DATA: storage } });
     page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#overview-summary').waitFor();
     client = new Client({ name: 'journal-independent-client', version: '1' });
-    await client.connect(new StreamableHTTPClientTransport(new URL('mcp', page.url())));
+    const config = await page.evaluate(() => window.desktop.mcpConfig());
+    const command = JSON.parse(config.match(/^command = (.*)$/m)[1]);
+    const args = JSON.parse(config.match(/^args = (.*)$/m)[1]);
+    await client.connect(new StdioClientTransport({ command, args, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' }));
+    const windowRoot = await page.evaluate(async () => (await (await fetch('api/state')).json()).context.projectRoot);
+    assert.equal(windowRoot, expectedRoot, 'launch preserves the selected project before the independent MCP client binds');
+    if (windowRoot) await bindProject(windowRoot);
   };
   const stop = async () => {
     try { if (client) await client.close(); }
@@ -49,8 +59,10 @@ test('map broadcast and persistent AI journal support a fresh client without ove
     await desktop.evaluate(({ dialog }, selected) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
     }, directory);
-    await page.getByRole('button', { name: '选择项目文件夹', exact: true }).click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(directory, { exact: true }).waitFor();
+    expectedRoot = directory;
+    await bindProject(directory);
   };
   const details = async () => {
     if (!await page.locator('#developer-details').evaluate(element => element.open)) {

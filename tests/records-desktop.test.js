@@ -17,13 +17,14 @@ test('desktop backup and confirmed restore preserve records across a full restar
     const source = path.join(project, 'source.js'); await writeFile(source, 'private source');
     const backup = path.join(storage, 'backup.json'), diagnostic = path.join(storage, 'export.jsonl');
     desktop = await launch(); let page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.waitForFunction(() => document.getElementById('window-context').textContent.length > 0);
     const dialogs = async (open, save, confirm = 0) => desktop.evaluate(({ dialog }, choices) => {
       dialog.showOpenDialog = async () => ({ canceled: !choices.open, filePaths: choices.open ? [choices.open] : [] });
       dialog.showSaveDialog = async () => ({ canceled: !choices.save, filePath: choices.save });
       dialog.showMessageBox = async (_, options) => { globalThis.restorePrompt = options; return { response: choices.confirm }; };
     }, { open, save, confirm });
-    await dialogs(project, null); await page.locator('#choose').click();
+    await dialogs(project, null); await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
     await page.locator('#map-tab').click(); await page.locator('.node').first().click(); await page.locator('#developer-details > summary').click();
     const request = async text => {
@@ -76,6 +77,7 @@ test('desktop backup and confirmed restore preserve records across a full restar
     await stopped; desktop = undefined;
     assert.equal(await readFile(marker, 'utf8'), 'relaunch requested', 'confirmed restore exits and requests a fresh process');
     desktop = await launch(); page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor(); await page.locator('#map-tab').click(); await page.locator('#developer-details > summary').click();
     await page.locator('#requirements').getByText('private-record-before-backup').waitFor();
     assert.equal(await page.locator('#requirements').getByText('private-record-after-backup').count(), 0, 'fresh process must read the restored archive, not cached later records');
@@ -87,6 +89,7 @@ test('desktop backup and confirmed restore preserve records across a full restar
     const closedEntries = (await readFile(path.join(storage, 'diagnostics.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
     assert.deepEqual(closedEntries.filter(entry => entry.event === 'close').map(entry => entry.stage), ['server', 'desktop'], 'normal exit waits for service shutdown before saving one desktop close event');
     desktop = await launch(); page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor(); await page.locator('#map-tab').click(); await page.locator('#developer-details > summary').click();
     await page.locator('#requirements').getByText('record-saved-before-normal-close').waitFor();
     await desktop.evaluate(({ dialog }) => { dialog.showSaveDialog = () => new Promise(resolve => { globalThis.finishCanceledBackup = () => resolve({ canceled: true }); }); });

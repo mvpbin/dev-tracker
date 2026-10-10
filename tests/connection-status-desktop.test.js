@@ -30,6 +30,7 @@ test('desktop header reports real MCP pipe sessions, status, copy, and responsiv
   const launch = async () => {
     desktop = await _electron.launch({ executablePath, args: launchArgs, env, timeout: 15000 });
     const page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.waitForFunction(() => document.getElementById('window-context')?.textContent.length > 0);
     return page;
   };
@@ -77,7 +78,7 @@ test('desktop header reports real MCP pipe sessions, status, copy, and responsiv
     assert.equal(await page.locator('#session-count').textContent(), '0');
 
     await desktop.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, project);
-    await page.locator('#choose').click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
     const windowSessionId = (await page.evaluate(async () => (await fetch('api/state')).json())).context.sessionId;
     const discovery = JSON.parse(await readFile(configPath, 'utf8'));

@@ -16,6 +16,7 @@ test('desktop exposes real paths and real full-read receipts through the generat
   try {
     desktop = await _electron.launch({ executablePath, args: process.env.DEV_TRACKER_EXE ? [] : ['.'], env: { ...process.env, DEV_TRACKER_TEST_DATA: base }, timeout: 15000 });
     const page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.waitForFunction(() => window.desktop && document.getElementById('title').textContent);
     const config = await page.evaluate(() => window.desktop.mcpConfig());
     const command = JSON.parse(config.match(/^command = (.*)$/m)[1]);
@@ -29,7 +30,7 @@ test('desktop exposes real paths and real full-read receipts through the generat
     const bound = await call('bind_session', { projectRoot, label: '验收 AI' });
     const tool = (name, args = {}) => call(name, { sessionId: bound.sessionId, ...args });
     await desktop.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, projectRoot);
-    await page.locator('#choose').click();
+    await page.locator('#switch-project').click();
     await tool('update_node', { id: 'root', action: 'request', text: '验收新要求' });
     await page.waitForFunction(() => document.getElementById('requirement-receipt').textContent.includes('等待 AI'));
     await tool('get_map'); await tool('get_handoff');

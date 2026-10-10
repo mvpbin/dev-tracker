@@ -30,6 +30,7 @@ test('linked code differences remain readable after reopening and reselecting th
       env: { ...process.env, DEV_TRACKER_TEST_DATA: storage }
     });
     page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#developer-details > summary').click();
     await page.getByRole('tab', { name: '开发地图', exact: true }).click();
     await page.locator('.node').first().waitFor();
@@ -45,7 +46,7 @@ test('linked code differences remain readable after reopening and reselecting th
     finally { client = undefined; if (desktop) await desktop.close(); desktop = undefined; }
   };
   const choose = async () => {
-    await page.getByRole('button', { name: '选择项目文件夹', exact: true }).click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(root, { exact: true }).waitFor();
   };
   const openDiff = async () => {

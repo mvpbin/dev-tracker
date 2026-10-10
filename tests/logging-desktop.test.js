@@ -32,12 +32,13 @@ test('desktop errors survive a disconnected console and retain private diagnosti
     desktop = await _electron.launch({ timeout: 15000, executablePath: process.env.DEV_TRACKER_EXE || electron,
       args: process.env.DEV_TRACKER_EXE ? [] : ['.'], env: { ...process.env, DEV_TRACKER_TEST_DATA: storage } });
     const page = await desktop.firstWindow();
+    await page.locator('#details-toggle').click();
     await page.locator('#overview-summary').waitFor();
     stage = 'select';
     await desktop.evaluate(({ dialog }, selected) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
     }, project);
-    await page.locator('#choose').click();
+    await page.locator('#switch-project').click();
     await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
     await desktop.evaluate(() => {
       globalThis.loggingUncaught = [];
