@@ -16,7 +16,7 @@ test('MCP and UI share persisted state, reject bad requests, and never label rep
   try {
     await server.selectProject(project);
     await client.connect(new StreamableHTTPClientTransport(new URL(url + '/mcp')));
-    assert.equal((await client.listTools()).tools.length, 12);
+    assert.deepEqual((await client.listTools()).tools.map(t => t.name).sort(), ['bind_session', 'append_journal', 'get_journal', 'get_overview', 'get_diff', 'get_handoff', 'get_map', 'get_node', 'update_node', 'get_evidence', 'run_tests', 'link_evidence', 'record_decision', 'get_decisions', 'set_acceptance_plan', 'record_quality_review'].sort());
     assert.equal((await client.callTool({ name: 'get_map', arguments: {} })).isError, true, 'central MCP requires explicit project binding');
     const binding = JSON.parse((await client.callTool({ name: 'bind_session', arguments: { projectRoot: project, label: 'Integration chat' } })).content[0].text);
     const tool = (name, args = {}) => client.callTool({ name, arguments: { ...args, sessionId: binding.sessionId } });

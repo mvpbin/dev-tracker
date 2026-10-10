@@ -1,6 +1,6 @@
 {
   "name": "dev-tracker",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Local development map for Codex",
   "author": "mvpbin",
   "license": "MIT",
@@ -23,13 +23,14 @@
     "test:readiness-desktop": "node --test tests/readiness-desktop.test.js",
     "test:journal": "node --test tests/journal.test.js",
     "test:journal-desktop": "node --test tests/journal-desktop.test.js",
+    "test:improvements": "node --test tests/improvements.test.js tests/improvements-desktop.test.js",
     "test:sessions": "node --test tests/sessions.test.js tests/session-mcp.test.js tests/worktrees.test.js",
     "test:sessions-desktop": "node --test tests/multi-window-desktop.test.js",
     "test:checkup": "node --test tests/audit-projects.test.js tests/audit-evidence.test.js tests/compact-handoff.test.js",
     "test:checkup-desktop": "node --test tests/audit-desktop.test.js",
-    "test:core": "node --test tests/audit-evidence.test.js tests/audit-projects.test.js tests/backup.test.js tests/compact-handoff.test.js tests/connection-status.test.js tests/diagnostics.test.js tests/evidence.test.js tests/git-diff.test.js tests/handoff.test.js tests/journal.test.js tests/mcp.test.js tests/overview.test.js tests/projects.test.js tests/release-connection.test.js tests/session-mcp.test.js tests/sessions.test.js tests/worktrees.test.js",
+    "test:core": "node --test tests/vendor-path.test.js tests/improvements.test.js tests/audit-evidence.test.js tests/audit-projects.test.js tests/backup.test.js tests/compact-handoff.test.js tests/connection-status.test.js tests/diagnostics.test.js tests/evidence.test.js tests/git-diff.test.js tests/handoff.test.js tests/journal.test.js tests/mcp.test.js tests/overview.test.js tests/projects.test.js tests/release-connection.test.js tests/session-mcp.test.js tests/sessions.test.js tests/worktrees.test.js",
     "test:pipes": "node --test --test-concurrency=1 tests/pipe-server.test.js tests/pipe-bridge.test.js tests/pipe-integration.test.js",
-    "test:desktop:all": "node --test --test-concurrency=1 tests/audit-desktop.test.js tests/branches.test.js tests/connection-status-desktop.test.js tests/desktop.test.js tests/diff-desktop.test.js tests/journal-desktop.test.js tests/logging-desktop.test.js tests/multi-window-desktop.test.js tests/readiness-desktop.test.js tests/records-desktop.test.js tests/pipe-desktop.test.js",
+    "test:desktop:all": "node --test --test-concurrency=1 tests/improvements-desktop.test.js tests/audit-desktop.test.js tests/branches.test.js tests/connection-status-desktop.test.js tests/desktop.test.js tests/diff-desktop.test.js tests/journal-desktop.test.js tests/logging-desktop.test.js tests/multi-window-desktop.test.js tests/readiness-desktop.test.js tests/records-desktop.test.js tests/pipe-desktop.test.js",
     "build:win": "electron-builder --win nsis --x64"
   },
   "build": {

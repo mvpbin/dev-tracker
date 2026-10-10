@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto';
+
+export const reviewPlanKey = node => createHash('sha256').update(JSON.stringify({ criteria: node.criteria || '', steps: node.acceptancePlan || [], requirements: node.tasks || [] })).digest('hex');
+export const reviewCurrent = (node, evidence) => !!node.qualityReview && !node.qualityReview.decisionsChanged && currentProject(evidence) && node.qualityReview.fingerprint === evidence.fingerprint && node.qualityReview.planKey === reviewPlanKey(node);
+
 function currentProject(evidence) {
   return !!evidence.root && !!evidence.scannedAt && !!evidence.fingerprint && !evidence.error;
 }
@@ -28,7 +33,9 @@ export function buildOverview(state, evidence) {
       lane = acceptance.acceptanceCurrent ? 'done' : 'verify';
       reason = acceptance.acceptanceCurrent ? '用户已确认当前项目版本。' : acceptance.acceptanceWarning;
     }
-    return { id: node.id, title: node.title, status: node.status, owner: node.owner ?? null, lane, verified, ...acceptance, criteria: node.criteria || '', reason };
+    const received = node.tasks?.length > 0 && node.requirementReceipt?.count === node.tasks.length;
+    const actor = lane === 'done' ? '无待办' : lane === 'review' ? '用户试用' : 'AI';
+    return { id: node.id, title: node.title, status: node.status, owner: node.owner ?? null, lane, actor, received, verified, ...acceptance, criteria: node.criteria || '', reason };
   });
   const counts = { pending: 0, active: 0, verify: 0, review: 0, done: 0, verifiedCurrent: 0 };
   for (const item of items) { counts[item.lane]++; if (item.verified) counts.verifiedCurrent++; }
@@ -36,10 +43,10 @@ export function buildOverview(state, evidence) {
   const candidate = items.find(item => item.lane === 'active') ||
     items.find(item => item.status === 'accepted' && !item.acceptanceCurrent) ||
     items.find(item => item.lane === 'verify') || items.find(item => item.lane === 'review') || items.find(item => item.lane === 'pending');
-  const missingCriteria = items.find(item => !item.criteria.trim());
+  const missingCriteria = items.find(item => !item.criteria.trim() && !state.nodes.find(node => node.id === item.id)?.acceptancePlan?.length);
   const missingTest = items.find(item => !item.verified);
   const nextItem = candidate || missingCriteria || missingTest;
-  const next = nextItem ? { id: nextItem.id, title: nextItem.title, lane: nextItem.lane,
+  const next = nextItem ? { id: nextItem.id, title: nextItem.title, lane: nextItem.lane, actor: candidate ? candidate.actor : 'AI',
     reason: candidate ? candidate.reason : missingCriteria ? '先补齐具体试用通过条件，再判断是否交付。' : '用户已确认，但当前版本仍缺少有效测试记录。' } : null;
   const warnings = [];
   if (!evidence.root) warnings.push('尚未选择实际项目，无法确认测试和验收适用于当前版本。');

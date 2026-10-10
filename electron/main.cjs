@@ -71,6 +71,11 @@ else {
       await clipboard.writeText(text);
       if (await clipboard.readText() !== text) throw new Error('系统剪贴板未保存内容，请稍后重试或导出交接记录');
     });
+    ipcMain.handle('mcp-config', event => {
+      contextFor(event);
+      const literal = value => JSON.stringify(value);
+      return `[mcp_servers.dev_tracker]\ncommand = ${literal(process.execPath)}\nargs = [${literal(path.join(app.getAppPath(), 'mcp-stdio.mjs'))}, "--config", ${literal(pipeService.configPath)}]\nenv = { ELECTRON_RUN_AS_NODE = "1" }\n`;
+    });
     ipcMain.handle('choose-project', async event => {
       const context = windows.get(event.sender.id);
       if (!context) throw new Error('无效窗口');

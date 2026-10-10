@@ -81,7 +81,7 @@ function renderOverview() {
   if (!overview) return;
   if (document.activeElement !== $('goal')) $('goal').value = overview.goal || '';
   $('overview-summary').innerHTML = `<div class="progress-metric"><strong>${overview.completed} / ${overview.total}${overview.percent === null ? '' : ` · ${overview.percent}%`}</strong><span>当前版本已确认</span></div><div class="progress-metric"><strong>${overview.counts.verifiedCurrent} / ${overview.total}</strong><span>当前版本测试已验证</span></div><p class="delivery-status">${escape(overview.delivery)}</p>`;
-  $('overview-next').innerHTML = overview.next ? `<button data-node="${escape(overview.next.id)}"><i data-lucide="arrow-right"></i> 下一步：${escape(overview.next.title)}</button><p>${escape(overview.next.reason)}</p>` : `<span>${overview.total ? '当前交付清单已确认' : '尚未确定本版交付清单'}</span>`;
+  $('overview-next').innerHTML = overview.next ? `<button data-node="${escape(overview.next.id)}"><i data-lucide="arrow-right"></i> ${escape(overview.next.actor)} · 下一步：${escape(overview.next.title)}</button><p>${escape(overview.next.reason)}</p>` : `<span>${overview.total ? '当前交付清单已确认' : '尚未确定本版交付清单'}</span>`;
   $('overview-warnings').innerHTML = overview.warnings.map(warning => `<p>${escape(warning)}</p>`).join('');
   const lanes = { pending: '待处理', active: '处理中', verify: '待验证', review: '待用户验收', done: '已确认' };
   $('board').innerHTML = Object.entries(lanes).map(([lane, label]) => `<section class="lane" data-lane="${lane}"><h3>${label}<span>${overview.counts[lane]}</span></h3>${overview.items.filter(item => item.lane === lane).map(item => `<button class="board-item" data-node="${escape(item.id)}" title="${escape(item.title)}"><strong>${escape(item.title)}</strong><span>${escape(item.criteria || '通过条件待填写')}</span><span>${item.verified ? '当前版本测试已验证' : '当前版本待验证'}</span>${item.acceptanceWarning ? `<span class="item-warning">${escape(item.acceptanceWarning)}</span>` : ''}</button>`).join('') || '<div class="empty">暂无任务</div>'}</section>`).join('');
@@ -100,7 +100,7 @@ function renderBroadcast() {
   $('broadcast-update').textContent = update ? `最近进展：${broadcastText(update.text || update.message)} · ${update.source === 'ai' ? 'AI 自报' : '人工记录'} · ${date(update.time)}` : active ? '最近进展：暂无记录' : '最近进展：暂无进行中的任务';
   const pending = state.nodes.find(node => node.status === 'pending');
   const next = overview?.next && overview.next.id !== active?.id && state.nodes.some(node => node.id === overview.next.id) ? overview.next : pending;
-  $('broadcast-next').textContent = next ? `下一步：${broadcastText(next.title)}${next.reason ? ` · ${broadcastText(next.reason)}` : ' · 待处理'}` : '下一步：暂无待处理事项';
+  $('broadcast-next').textContent = next ? `${next.actor || 'AI'} · 下一步：${broadcastText(next.title)}${next.reason ? ` · ${broadcastText(next.reason)}` : ' · 待处理'}` : '下一步：暂无待处理事项';
 }
 function activeNodes() {
   return state.nodes.filter(node => node.status === 'active').sort((a, b) => Number(b.owner?.sessionId === state.context?.sessionId) - Number(a.owner?.sessionId === state.context?.sessionId));
@@ -132,7 +132,19 @@ function render() {
   $('release-scope').hidden = !node.parent; $('scope').checked = node.releaseIncluded === true;
   if (document.activeElement !== $('criteria')) $('criteria').value = node.criteria || '';
   $('title').textContent = node.title; $('status').textContent = statusLabel(node);
+  $('decision-count').textContent = state.decisionSummary?.total || 0;
+  $('decision-summary').innerHTML = ((state.decisionSummary?.entries || []).map(item => `<div class="entry"><strong>${item.kind === 'question' ? '未决问题' : '当前决定'} · AI 记录</strong><p>${escape(item.text)}</p></div>`).join('') || '<div class="empty">暂无记录</div>') + (state.decisionSummary?.total ? `<p>文字摘要 · 另有 ${state.decisionSummary.omitted} 条未展示 · 完整记录见交接导出</p>` : '');
+  const receipt = node.requirementReceipt;
+  $('requirement-receipt').textContent = !node.tasks.length ? '尚无修改要求' : receipt?.count === node.tasks.length ? `最新要求已由 AI 获取 · ${receipt.label || receipt.sessionId} · ${date(receipt.time)}` : '要求已保存 · 等待 AI 获取';
+  $('mcp-config-copy').hidden = !window.desktop?.mcpConfig;
   $('acceptance-criteria').hidden = !node.criteria?.trim(); $('acceptance-criteria').querySelector('p').textContent = node.criteria || '';
+  $('acceptance-plan').hidden = !node.acceptancePlan?.length;
+  $('acceptance-plan').querySelector('ol').innerHTML = (node.acceptancePlan || []).map(step => `<li><p>${escape(step.action)}</p><p>预期：${escape(step.expected)}</p></li>`).join('');
+  $('quality-review').hidden = !node.qualityReview;
+  if (node.qualityReview) {
+    $('quality-review').querySelector('summary').textContent = `AI 复核记录 · ${node.reviewCurrent ? '匹配当前版本与要求' : '已过期，需重新检查'}`;
+    $('quality-review').querySelector('div').innerHTML = ['scope', 'summary', 'findings', 'limitations'].map((key, index) => `<div class="entry"><strong>${['检查范围', '结果摘要', '发现', '未覆盖与限制'][index]}</strong><p>${escape(node.qualityReview[key] || '未记录')}</p></div>`).join('');
+  }
   $('count').textContent = `${state.nodes.length - 1} 个功能 · ${state.nodes.filter(n => n.status === 'pending').length} 个待处理 · ${state.nodes.filter(n => n.status === 'review').length} 个待验收`;
   document.querySelector('h1').textContent = state.nodes[0].title;
   const projectLabel = state.context?.worktree ? `${state.context.worktree.sourceRoot.split(/[\\/]/).at(-1)} 的副本` : state.context?.projectRoot?.split(/[\\/]/).at(-1) || '未选择项目';
@@ -197,6 +209,9 @@ new ResizeObserver(() => {
 $('nodes').onclick = event => { const node = event.target.closest('[data-id]'); if (node) selectNode(node.dataset.id); };
 for (const [form, field, type] of [['request', 'requirement', 'request'], ['record', 'evidence', 'record']]) $(form).onsubmit = async event => { event.preventDefault(); const button = $(form).querySelector('button'); button.disabled = true; try { if (await action(type, $(field).value)) $(field).value = ''; } catch (e) { notify(e.message); } finally { button.disabled = false; } };
 $('start').onclick = () => action(state.nodes.find(n => n.id === selected).status === 'active' ? 'pause' : 'start').catch(e => notify(e.message));
+$('mcp-config-copy').onclick = async () => {
+  try { await window.desktop.copyText(await window.desktop.mcpConfig()); notify('本机 MCP 配置已复制'); } catch (error) { notify(`复制失败：${error.message}`); }
+};
 for (const type of ['submit', 'accept', 'reopen']) $(type).onclick = async () => {
   $(type).disabled = true;
   try { await action(type); } catch (e) { notify(e.message); } finally { $(type).disabled = false; }

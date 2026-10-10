@@ -6,10 +6,11 @@ import path from 'node:path';
 import { _electron } from 'playwright';
 import electron from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-test('AI branch highlights follow reported work, not selection or manual status', async () => {
+test('AI branch highlights follow reported work, not selection or manual status', { timeout: 90000 }, async () => {
   const storage = await mkdtemp(path.join(tmpdir(), 'dev-tracker-branches-'));
+  const project = path.join(storage, 'project'); await mkdir(project);
   const client = new Client({ name: 'branches-test', version: '1' });
   let desktop;
   try {
@@ -24,14 +25,23 @@ test('AI branch highlights follow reported work, not selection or manual status'
     await page.getByRole('tab', { name: '开发地图', exact: true }).click();
     await page.locator('.node').waitFor();
     await page.waitForFunction(() => !document.getElementById('canvas').hidden);
-    await client.connect(new StreamableHTTPClientTransport(new URL('mcp', page.url())));
+    await desktop.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, project);
+    await page.locator('#choose').click();
+    await page.locator('#project-path').getByText(project, { exact: true }).waitFor();
+    const config = await page.evaluate(() => window.desktop.mcpConfig());
+    const command = JSON.parse(config.match(/^command = (.*)$/m)[1]);
+    const args = JSON.parse(config.match(/^args = (.*)$/m)[1]);
+    await client.connect(new StdioClientTransport({ command, args, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' }));
+    const bound = await client.callTool({ name: 'bind_session', arguments: { projectRoot: project, label: 'Branches acceptance' } }, undefined, { timeout: 10000 });
+    assert.notEqual(bound.isError, true, JSON.stringify(bound.content));
+    const sessionId = JSON.parse(bound.content[0].text).sessionId;
     const update = async args => {
-      const result = await client.callTool({ name: 'update_node', arguments: args });
+      const result = await client.callTool({ name: 'update_node', arguments: { sessionId, ...args } }, undefined, { timeout: 10000 });
       assert.notEqual(result.isError, true, JSON.stringify(result.content));
     };
     const add = async (parent, title) => {
       await update({ id: parent, action: 'add', text: title });
-      const nodes = JSON.parse((await client.callTool({ name: 'get_map', arguments: {} })).content[0].text);
+      const nodes = JSON.parse((await client.callTool({ name: 'get_map', arguments: { sessionId } }, undefined, { timeout: 10000 })).content[0].text);
       return nodes.find(node => node.title === title).id;
     };
     const parent = await add('root', '父分支');

@@ -20,9 +20,14 @@
   <div class="detail-head"><span>选中功能</span><button id="rename" title="重命名" aria-label="重命名"><i data-lucide="pencil"></i></button></div>
   <h2 id="title"></h2><span id="status" class="badge"></span>
    <form id="request"><label for="requirement">修改要求</label><textarea id="requirement" required maxlength="2000" placeholder="例如：导出时只保留筛选后的记录"></textarea><button class="primary" type="submit"><i data-lucide="send"></i> 保存任务</button></form>
+   <p id="requirement-receipt" role="status"></p>
+   <button id="mcp-config-copy" hidden title="复制本机 MCP 配置" aria-label="复制本机 MCP 配置"><i data-lucide="plug"></i> 复制 MCP 配置</button>
    <section id="acceptance-criteria" hidden><h3>试用通过条件</h3><p></p></section>
+   <section id="acceptance-plan" hidden><h3>验收步骤</h3><ol></ol></section>
+   <details id="quality-review" hidden><summary></summary><div></div></details>
    <div id="acceptance" hidden><h3>验收状态</h3>
    <div class="actions"><button id="accept" hidden><i data-lucide="check-check"></i> 确认验收</button><button id="reopen" hidden><i data-lucide="rotate-ccw"></i> 重新打开</button></div></div>
+  <details><summary>决定与未决问题摘要 <span id="decision-count"></span></summary><div id="decision-summary"></div></details>
   <h3>项目目录</h3><button id="choose"><i data-lucide="folder-open"></i> 选择项目文件夹</button>
   <div id="project-path" class="entry">尚未选择项目</div>
   <details id="developer-details"><summary>开发详情</summary>

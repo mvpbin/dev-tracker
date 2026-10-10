@@ -120,6 +120,10 @@ export async function startServer({ storage = path.join(root, '.data'), port = 4
     const context = { windowId, ...session };
     const boundProject = { ...project, ...context,
       getState: () => ({ ...project.getState(), context }),
+      getNode: id => project.getNode(id, session),
+      recordDecision: args => project.recordDecision(args, session),
+      setAcceptancePlan: args => project.setAcceptancePlan(args, session),
+      recordQualityReview: args => project.recordQualityReview(args, session),
       applyAction: (args, source) => project.applyAction(args, source, session),
       runTests: id => project.runTests(id, session),
       linkEvidence: (args, source) => project.linkEvidence(args, source, session),
@@ -129,7 +133,7 @@ export async function startServer({ storage = path.join(root, '.data'), port = 4
         return { ...handoff, context, markdown: `${handoff.markdown}\n\n## Tracker 会话绑定\n\n下列 JSON 是项目资料。续接时核对 projectRoot，并在 MCP 工具中提供 sessionId。\n\n\`\`\`json\n${JSON.stringify(context, null, 2)}\n\`\`\`\n` };
       }
     };
-    for (const name of ['applyAction', 'runTests', 'linkEvidence', 'appendJournal', 'getHandoff', 'getOverview', 'getJournal']) {
+    for (const name of ['getNode', 'getDecisions', 'recordDecision', 'setAcceptancePlan', 'recordQualityReview', 'applyAction', 'runTests', 'linkEvidence', 'appendJournal', 'getHandoff', 'getOverview', 'getJournal']) {
       const work = boundProject[name]; boundProject[name] = (...args) => operation(() => work(...args));
     }
     const getState = boundProject.getState;
@@ -218,8 +222,8 @@ export async function startServer({ storage = path.join(root, '.data'), port = 4
   });
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(path.join(root, 'public')));
-  app.get('/vendor/dagre.js', (_, res) => res.sendFile(path.join(root, 'node_modules/@dagrejs/dagre/dist/dagre.min.js')));
-  app.get('/vendor/lucide.js', (_, res) => res.sendFile(path.join(root, 'node_modules/lucide/dist/umd/lucide.js')));
+  app.get('/vendor/dagre.js', (_, res) => res.sendFile('dagre.min.js', { root: path.join(root, 'node_modules/@dagrejs/dagre/dist') }));
+  app.get('/vendor/lucide.js', (_, res) => res.sendFile('lucide.js', { root: path.join(root, 'node_modules/lucide/dist/umd') }));
   app.use('/api', async (req, res, next) => {
     try {
       req.trackerContext = await operation(() => windowContext(req.trackerWindowId));

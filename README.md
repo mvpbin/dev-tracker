@@ -2,11 +2,11 @@
 
 供使用 AI 开发的用户查看任务、实际改动和验证依据的本地开发地图。采用 JavaScript / Node.js + Electron，交付 Windows 桌面程序，通过 MCP 接入开发 AI。
 
-当前稳定版本：**0.11.0**。独立 Windows 验收步骤见[WINDOWS_ACCEPTANCE.md](WINDOWS_ACCEPTANCE.md)。顶部显示程序版本和当前项目实际收到的MCP调用；空闲时的最近成功不代表持续在线。
+当前稳定版本：**0.12.0**。Windows 验收步骤见[WINDOWS_ACCEPTANCE.md](WINDOWS_ACCEPTANCE.md)；本版新增能力和边界见[RELEASE_NOTES_0.12.0.md](RELEASE_NOTES_0.12.0.md)。顶部显示程序版本和当前项目实际收到的MCP调用；空闲时的最近成功不代表持续在线。
 
 ## 使用
 
-从 GitHub Releases 下载 `Dev.Tracker.Setup.<版本>.exe` 安装版，或下载 `Dev.Tracker.Portable.<版本>.zip` 免安装版。免安装版需解压完整目录，再运行其中的 `Dev Tracker.exe`；项目记录仍保存在下述 Windows 应用数据目录，不随程序文件夹搬迁。程序未签名，Windows 可能提示未知发布者。打开程序后选择项目目录；首次扫描建立基线，之后记录扫描范围内的文件变化和 Git 状态。
+从 GitHub Releases 下载 `Dev.Tracker.Setup.0.12.0.exe` 安装版，或下载 `Dev-Tracker-0.12.0-win-x64.zip` 免安装版。免安装版需解压完整目录，再运行其中的 `Dev Tracker.exe`；项目记录仍保存在下述 Windows 应用数据目录，不随程序文件夹搬迁。程序未签名，Windows 可能提示未知发布者。升级或卸载前关闭所有Dev Tracker窗口，包括免安装版。打开程序后选择项目目录；首次扫描建立基线，之后记录扫描范围内的文件变化和 Git 状态。
 
 记录位于 Windows 应用数据目录的 `dev-tracker` 文件夹，各项目独立保存。关闭后重新选择同一目录可继续读取。备份按钮导出全部 Tracker 记录；恢复按钮全量替换记录并重启。备份**不包含项目源码、依赖和并行副本代码**，但包含本机路径、需求与测试输出，请自行保管。
 
@@ -15,6 +15,8 @@
 ## MCP 接入
 
 推荐使用命名管道 stdio 桥。先打开桌面程序，再连接 MCP；桥与桌面共用记录，不创建第二套存储。安装版使用自带的 Electron 运行时，无需另装 Node.js。
+
+侧栏“复制 MCP 配置”会生成本机的程序与发现文件路径；把配置交给 Codex 配置流程使用。复制不修改 Codex 配置，也不唤醒聊天。保存要求只写入本地；get_node 获取完整要求后显示回执，不代表 AI 已理解或执行。get_decisions 分页读取完整当前决定，直到 nextOffset 为 null；history 查看替代记录。set_acceptance_plan 保存操作/预期结果，record_quality_review 保存检查范围/发现/限制，均不自动确认验收。需求、步骤、条件、决定、目标或扫描版本改变时，复核需重查；历史复核保留在 get_journal。
 
 下面用 Windows 用户 `YourName`、默认安装目录举例；请将用户名和安装目录替换成实际绝对路径。免安装版将 `command` 和 `args` 中的程序路径改为实际解压目录；发现文件仍位于 `%APPDATA%/dev-tracker/mcp-connection/discovery.json`，TOML 中使用展开后的绝对路径。发现文件含本次运行凭据，不要复制、上传或导出其内容。
 
@@ -36,7 +38,7 @@ url = "http://127.0.0.1:4318/mcp"
 
 每个开发会话首先调用 `bind_session`，提供实际 `projectRoot` 和会话 `label`。保留返回的 `sessionId`，每次中央 MCP 调用均携带该身份。续接先 `get_handoff` 核对目录、任务和证据，再按节点或关键词 `get_journal`；重要步骤后 `append_journal` 记录做法、验证范围、坑和下一步。
 
-工具：`bind_session`、`get_map`、`get_node`、`update_node`、`get_evidence`、`get_diff`、`link_evidence`、`run_tests`、`get_handoff`、`get_overview`、`append_journal`、`get_journal`。
+工具：`bind_session`、`get_map`、`get_node`、`update_node`、`get_evidence`、`get_diff`、`link_evidence`、`run_tests`、`get_handoff`、`get_overview`、`append_journal`、`get_journal`、`record_decision`、`get_decisions`、`set_acceptance_plan`、`record_quality_review`。
 
 多个会话需要独立身份，同时改代码请使用独立目录或并行副本。会话身份不能隔离真实代码。Git 副本要求已有提交且工作区干净，不自动合并。
 
@@ -58,7 +60,7 @@ npm.cmd run desktop
 npm.cmd run test:core
 npm.cmd run test:pipes
 npm.cmd run test:desktop:all
-.\node_modules\.bin\electron-builder.cmd --win nsis --x64 --config.directories.output=dist/0.11.0
+.\node_modules\.bin\electron-builder.cmd --win nsis --x64 --config.directories.output=dist/0.12.0
 node scripts/release-check.mjs
 ```
 

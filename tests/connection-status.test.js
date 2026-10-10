@@ -53,6 +53,9 @@ test('connection reports only observed MCP calls for the displayed project and r
         assert.ok(Date.now() < deadline, 'the running call must become observable before completion');
         await new Promise(resolve => setTimeout(resolve, 10));
       }
+      const fullRead = await tool('get_node', { sessionId: sa.sessionId, id: 'root' });
+      assert.notEqual(fullRead.isError, true, 'long tests must not block a full requirement receipt');
+      assert.equal((await connection()).sessions[0].pending, 1, 'full retrieval must complete before the gated test finishes');
       await tool('get_node', { sessionId: sa.sessionId, id: 'missing' });
       const active = (await connection()).sessions[0];
       assert.equal(active.status, 'running'); assert.equal(active.pending, 1); assert.equal(active.tool, 'get_node');

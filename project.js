@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createEvidence } from './evidence.js';
 import { buildHandoff } from './handoff.js';
 import { compactHandoff } from './compact-handoff.js';
-import { buildOverview, acceptanceState } from './overview.js';
+import { buildOverview, acceptanceState, reviewPlanKey, reviewCurrent } from './overview.js';
 import { validateJournal, selectJournal } from './journal.js';
 
 export async function createProject(storage, activeRoot, excludedStorage) {
@@ -19,8 +19,69 @@ export async function createProject(storage, activeRoot, excludedStorage) {
   const canonicalKey = value => process.platform === 'win32' ? value.toLowerCase() : value;
   const evidence = { get: () => ({ ...tracker.get(), running: testing }), scan: () => locked(() => tracker.scan()), diff: id => locked(() => tracker.diff(id)) };
   const getState = () => {
-    const { journal, ...snapshot } = state;
-    return { ...snapshot, nodes: state.nodes.map(node => node.status === 'accepted' ? { ...node, ...acceptanceState(node, evidence.get()) } : node) };
+    const { journal, decisions, ...snapshot } = state;
+    return { ...snapshot, decisionSummary: decisionSummary(), nodes: state.nodes.map(node => ({ ...node, ...(node.status === 'accepted' ? acceptanceState(node, evidence.get()) : {}), reviewCurrent: reviewCurrent(node, evidence.get()) })) };
+  };
+  const setAcceptancePlan = ({ id, steps }, session = {}) => locked(async () => {
+    const node = state.nodes.find(n => n.id === id);
+    if (!node || !session.sessionId || !Array.isArray(steps) || steps.length < 1 || steps.length > 10 || steps.some(step => !step || ['action', 'expected'].some(key => typeof step[key] !== 'string' || !step[key].trim() || step[key].length > 600))) throw new Error('Invalid acceptance steps');
+    if (node.status === 'active' && node.owner && node.owner.sessionId !== session.sessionId) throw new Error('另一会话正在处理');
+    const copy = structuredClone(state), current = copy.nodes.find(n => n.id === id);
+    current.acceptancePlan = steps.map(({ action, expected }) => ({ action: action.trim(), expected: expected.trim() }));
+    if (current.status === 'accepted') { current.status = 'review'; current.statusSource = 'ai'; }
+    copy.events.unshift({ id: crypto.randomUUID(), node: id, title: node.title, message: 'AI 自报：更新验收步骤', time: new Date().toISOString(), source: 'ai', sessionId: session.sessionId });
+    await writeFile(file + '.tmp', JSON.stringify(copy, null, 2)); await rename(file + '.tmp', file); state = copy;
+    return structuredClone(current);
+  });
+  const recordQualityReview = ({ id, scope, summary, findings, limitations }, session = {}) => locked(async () => {
+    const node = state.nodes.find(n => n.id === id);
+    if (!node || !session.sessionId || [scope, summary, findings, limitations].some(value => typeof value !== 'string' || value.length > 2000) || !scope.trim() || !summary.trim() || !limitations.trim()) throw new Error('Invalid quality review; scope, summary and limitations are required');
+    if (node.status === 'active' && node.owner && node.owner.sessionId !== session.sessionId) throw new Error('另一会话正在处理');
+    await tracker.scan();
+    if (!tracker.get().root || tracker.get().error || !tracker.get().fingerprint) throw new Error('Review requires a successful project scan');
+    const copy = structuredClone(state), current = copy.nodes.find(n => n.id === id);
+    current.qualityReview = { scope: scope.trim(), summary: summary.trim(), findings: findings.trim(), limitations: limitations.trim(), source: 'ai', sessionId: session.sessionId, time: new Date().toISOString(), fingerprint: tracker.get().fingerprint, planKey: reviewPlanKey(node) };
+    const content = validateJournal({ projectRoot: activeRoot, nodeId: id, summary: summary.slice(0, 300), approach: scope, verification: summary, pitfalls: findings, next: limitations }, state, tracker.get());
+    copy.journal = [...(copy.journal || []), { id: crypto.randomUUID(), ...content, source: 'ai', time: current.qualityReview.time, fingerprint: tracker.get().fingerprint, projectRoot: activeRoot, sessionId: session.sessionId }];
+    await writeFile(file + '.tmp', JSON.stringify(copy, null, 2)); await rename(file + '.tmp', file); state = copy;
+    return { ...structuredClone(current.qualityReview), current: true };
+  });
+  const decisionSummary = () => {
+    const current = (state.decisions || []).filter(item => !item.replacedBy);
+    return { total: current.length, omitted: Math.max(0, current.length - 8), entries: current.slice(-8).map(item => ({ ...item, text: item.text.slice(0, 160), reason: item.reason.slice(0, 160) })), details: 'AI 记录的当前决定与未决问题。get_decisions 按页读取完整文字和替代历史，不是正确性证明。' };
+  };
+  const getDecisions = ({ status = 'current', offset = 0, limit = 5 } = {}) => locked(() => {
+    if (!['current', 'history', 'all'].includes(status) || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 10) throw new Error('Invalid decision page');
+    const entries = (state.decisions || []).filter(item => status === 'all' || (status === 'current' ? !item.replacedBy : !!item.replacedBy)).slice().reverse();
+    return { projectRoot: activeRoot, entries: structuredClone(entries.slice(offset, offset + limit)), total: entries.length, nextOffset: offset + limit < entries.length ? offset + limit : null };
+  });
+  const recordDecision = ({ nodeId, kind = 'decision', text, reason = '', replaces }, session = {}) => locked(async () => {
+    if (!state.nodes.some(n => n.id === nodeId) || !['decision', 'question'].includes(kind) || typeof text !== 'string' || !text.trim() || text.length > 2000 || typeof reason !== 'string' || reason.length > 2000 || !session.sessionId) throw new Error('Invalid decision');
+    const node = state.nodes.find(n => n.id === nodeId);
+    if (node.status === 'active' && node.owner && node.owner.sessionId !== session.sessionId) throw new Error('另一会话正在处理');
+    if ((state.decisions || []).length >= 1000) throw new Error('Decision limit reached');
+    const copy = structuredClone(state); copy.decisions ||= [];
+    const prior = replaces && copy.decisions.find(item => item.id === replaces);
+    if (replaces && (!prior || prior.replacedBy || prior.nodeId !== nodeId)) throw new Error('Replacement must reference a current decision in this node');
+    const entry = { id: crypto.randomUUID(), nodeId, kind, text: text.trim(), reason: reason.trim(), source: 'ai', sessionId: session.sessionId, time: new Date().toISOString(), ...(replaces ? { replaces } : {}) };
+    if (prior) prior.replacedBy = entry.id;
+    copy.decisions.push(entry);
+    for (const node of copy.nodes) if (node.qualityReview && (nodeId === 'root' || node.id === nodeId)) node.qualityReview.decisionsChanged = true;
+    await writeFile(file + '.tmp', JSON.stringify(copy, null, 2)); await rename(file + '.tmp', file); state = copy;
+    return structuredClone(entry);
+  });
+  const getNode = (id, session = {}) => {
+    if (!state.nodes.some(n => n.id === id)) return Promise.reject(new Error('Node not found'));
+    return locked(async () => {
+    const copy = structuredClone(state), node = copy.nodes.find(n => n.id === id);
+    if (!node) throw new Error('Node not found');
+    if (!session.sessionId) throw new Error('Session required');
+    node.requirementReceipt = { count: node.tasks.length, time: new Date().toISOString(), sessionId: session.sessionId, label: session.label };
+    await writeFile(file + '.tmp', JSON.stringify(copy, null, 2));
+    await rename(file + '.tmp', file);
+    state = copy;
+    return { ...structuredClone(node), reviewCurrent: reviewCurrent(node, evidence.get()) };
+    });
   };
   function applyAction({ action, id, text }, source = 'manual', session = {}) {
     return locked(async () => {
@@ -51,7 +112,7 @@ export async function createProject(storage, activeRoot, excludedStorage) {
       if (action === 'submit') { current.status = 'review'; message = '开发完成，提交用户验收'; }
       if (action === 'accept') { current.status = 'accepted'; current.acceptance = { fingerprint: tracker.get().fingerprint, time }; message = '用户确认当前版本验收'; }
       if (action === 'reopen') { current.status = 'pending'; message = '重新打开任务'; }
-      if (action === 'goal') { copy.release = { ...copy.release, goal: value }; message = `本版目标：${value}`; }
+      if (action === 'goal') { copy.release = { ...copy.release, goal: value }; copy.nodes.forEach(n => { if (n.qualityReview) n.qualityReview.decisionsChanged = true; }); message = `本版目标：${value}`; }
       if (action === 'scope') { current.releaseIncluded = text === 'true'; message = current.releaseIncluded ? '纳入本版交付清单' : '移出本版交付清单'; }
       if (action === 'criteria') { current.criteria = value; if (current.status === 'accepted') { current.status = 'review'; current.statusSource = source; } message = `试用通过条件：${value}`; }
       if (['start', 'pause', 'request', 'submit', 'accept', 'reopen'].includes(action)) current.statusSource = source;
@@ -69,10 +130,9 @@ export async function createProject(storage, activeRoot, excludedStorage) {
   const runTests = (id, session = {}) => {
     if (testing) return Promise.reject(new Error('已有测试正在执行'));
     testing = true;
-    return locked(async () => {
+    return locked(() => {
       if (!state.nodes.some(n => n.id === id)) throw new Error('节点不存在');
-      return tracker.run(id, session.sessionId);
-    }).finally(() => { testing = false; });
+    }).then(() => tracker.run(id, session.sessionId)).finally(() => { testing = false; });
   };
   const linkEvidence = ({ kind, changeId, id }, source = 'manual', session = {}) => locked(async () => {
     if (id !== null && !state.nodes.some(n => n.id === id)) throw new Error('节点不存在');
@@ -106,5 +166,5 @@ export async function createProject(storage, activeRoot, excludedStorage) {
   const getJournal = filters => locked(() => selectJournal(state, tracker.get(), filters));
 
   const waitForIdle = async () => { await queue; await tracker.waitForIdle(); };
-  return { getState, applyAction, evidence, runTests, linkEvidence, getHandoff, getOverview, appendJournal, getJournal, waitForIdle };
+  return { getState, getNode, getDecisions, recordDecision, setAcceptancePlan, recordQualityReview, applyAction, evidence, runTests, linkEvidence, getHandoff, getOverview, appendJournal, getJournal, waitForIdle };
 }
